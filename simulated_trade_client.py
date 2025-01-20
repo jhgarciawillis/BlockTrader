@@ -1,64 +1,20 @@
-import logging
-from typing import Any, Callable
-from kucoin.client import Trade
 import time
 import uuid
+import logging
+from typing import Dict, Any, List
+from kucoin.client import Trade
 
 logger = logging.getLogger(__name__)
 
-def handle_errors(func: Callable) -> Callable:
-    def wrapper(*args, **kwargs) -> Any:
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"An error occurred in {func.__name__}: {str(e)}")
-            raise
-    return wrapper
-
-def handle_trading_errors(func: Callable) -> Callable:
-    def wrapper(*args, **kwargs) -> Any:
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"An error occurred in {func.__name__}: {str(e)}")
-    return wrapper
-
-class KucoinClientManager:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(KucoinClientManager, cls).__new__(cls)
-            cls._instance.client = None
-        return cls._instance
-
-    def initialize(self, key: str, secret: str, passphrase: str) -> None:
-        try:
-            logger.info("Initializing KuCoin client")
-            self.client = Trade(
-                key=key,
-                secret=secret,
-                passphrase=passphrase
-            )
-            # Test connection
-            self.client.get_timestamp()
-            logger.info("KuCoin client initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize KuCoin client: {e}")
-            raise
-
-    def get_client(self) -> Trade:
-        return self.client
-
 class SimulatedTradeClient:
-    def __init__(self, fees: dict, max_total_orders: int, currency_allocations: dict):
+    def __init__(self, fees: Dict[str, float], max_total_orders: int, currency_allocations: Dict[str, float]):
         self.orders = {}
         self.MAKER_FEE = fees.get('maker', 0.001)  # Default 0.1%
         self.TAKER_FEE = fees.get('taker', 0.001)  # Default 0.1%
         self.max_total_orders = max_total_orders
         self.currency_allocations = currency_allocations
 
-    def create_limit_order(self, symbol: str, side: str, price: str, size: str, **kwargs):
+    def create_limit_order(self, symbol: str, side: str, price: str, size: str, **kwargs) -> Dict[str, Any]:
         if len(self.orders) >= self.max_total_orders:
             logger.warning(f"Maximum total orders ({self.max_total_orders}) reached")
             return {}
@@ -152,11 +108,11 @@ class SimulatedTradeClient:
         
         self.orders[order_id] = order
         return {'orderId': order_id}
-    
-    def get_order(self, order_id: str):
+
+    def get_order(self, order_id: str) -> Dict[str, Any]:
         return self.orders.get(order_id, {})
 
-    def cancel_order(self, order_id: str):
+    def cancel_order(self, order_id: str) -> Dict[str, Any]:
         if order_id in self.orders:
             self.orders[order_id]['status'] = 'cancelled'
             self.orders[order_id]['isActive'] = False
@@ -164,7 +120,7 @@ class SimulatedTradeClient:
             return {'cancelledOrderIds': [order_id]}
         return {'cancelledOrderIds': []}
 
-    def get_fills(self, trade_type: str = 'TRADE', order_id: str = None):
+    def get_fills(self, trade_type: str = 'TRADE', order_id: str = None) -> List[Dict[str, Any]]:
         fills = []
         for order in self.orders.values():
             if order['status'] == 'done':
@@ -190,7 +146,7 @@ class SimulatedTradeClient:
                     })
         return fills
 
-    def get_orders(self, symbol: str = None, status: str = None):
+    def get_orders(self, symbol: str = None, status: str = None) -> List[Dict[str, Any]]:
         orders = []
         for order in self.orders.values():
             if (symbol is None or order['symbol'] == symbol) and \
@@ -199,6 +155,6 @@ class SimulatedTradeClient:
                 (status == 'done' and not order['isActive'])):
                 orders.append(order)
         return orders
-    
-def create_simulated_trade_client(fees: dict, max_total_orders: int, currency_allocations: dict) -> SimulatedTradeClient:
+
+def create_simulated_trade_client(fees: Dict[str, float], max_total_orders: int, currency_allocations: Dict[str, float]) -> SimulatedTradeClient:
     return SimulatedTradeClient(fees, max_total_orders, currency_allocations)
