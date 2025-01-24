@@ -8,7 +8,7 @@ from chart_utils import ChartCreator
 from trading_loop import initialize_trading_loop, stop_trading_loop
 
 # Import explicitly
-from ui_components import UIManager, StatusTable, initialize_ui_session_state
+from ui_components import UIManager, StatusTable
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -37,10 +37,11 @@ def main():
 
     error_container = st.empty()
     
-    try:
-        # Call session state initialization function
-        initialize_ui_session_state()
+    # Manually initialize session state
+    if 'trade_messages' not in st.session_state:
+        st.session_state.trade_messages = []
 
+    try:
         logger.info("Initializing KuCoin client...")
         if not config_manager.get_config('simulation_mode')['enabled']:
             config_manager.initialize_kucoin_client()
