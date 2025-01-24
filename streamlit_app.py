@@ -145,6 +145,7 @@ def main():
         # Display simulation indicator
         ui_manager.display_component('simulation_indicator', is_simulation=is_simulation)
 
+
     except Exception as e:
         logger.error(f"An error occurred in the main function: {e}")
         ui_manager.display_component('error_message', error_message=str(e), container=error_container)

@@ -27,6 +27,34 @@ class UIManager:
     def initialize(self):
         """
         Initialize session state variables
+        """
+        logger.info("Initializing session state")
+        
+        # Initialize trade messages if not exist
+        if 'trade_messages' not in st.session_state:
+            st.session_state.trade_messages = []
+        
+        return self
+
+    def __getattr__(self, name):
+        """
+        Fallback method to handle dynamic attribute access
+        """
+        if name == 'initialize_session_state':
+            return self.initialize
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+
+    def display_component(self, component_name: str, *args, **kwargs):
+        if component_name in self.components:
+            logger.info(f"Displaying component: {component_name}")
+            return self.components[component_name].display(*args, **kwargs)
+        else:
+            logger.error(f"Component '{component_name}' not found")
+            st.error(f"UI component '{component_name}' not found")
+
+    def initialize(self):
+        """
+        Initialize session state variables
         This method is explicitly defined to ensure compatibility
         """
         logger.info("Initializing session state")
