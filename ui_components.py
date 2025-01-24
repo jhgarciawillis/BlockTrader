@@ -10,6 +10,39 @@ class UIComponent:
     def display(self, *args, **kwargs):
         raise NotImplementedError("Subclasses must implement display method")
 
+class UIManager:
+    def __init__(self, bot):
+        self.bot = bot
+        self.components = {
+            'sidebar_controls': SidebarControls(),
+            'status_table': StatusTable(bot) if bot else None,
+            'trade_messages': TradeMessages(),
+            'error_message': ErrorMessage(),
+            'trading_controls': TradingControls(),
+            'symbol_selector': SymbolSelector(),
+            'chart_display': ChartDisplay(),
+            'simulation_indicator': SimulationIndicator(),
+        }
+
+    def initialize(self):
+        """Initialize session state variables"""
+        logger.info("Initializing session state")
+        if 'trade_messages' not in st.session_state:
+            st.session_state.trade_messages = []
+        return self
+
+    def initialize_session_state(self):
+        """Alias for initialize method"""
+        return self.initialize()
+
+    def display_component(self, component_name: str, *args, **kwargs):
+        if component_name in self.components:
+            logger.info(f"Displaying component: {component_name}")
+            return self.components[component_name].display(*args, **kwargs)
+        else:
+            logger.error(f"Component '{component_name}' not found")
+            st.error(f"UI component '{component_name}' not found")
+
 class SidebarControls(UIComponent):
     def display(self) -> Tuple[bool, Optional[float], float, float, int]:
         logger.info("Displaying sidebar controls.")
@@ -184,31 +217,3 @@ class SimulationIndicator(UIComponent):
             st.sidebar.warning("Running in Simulation Mode")
         else:
             st.sidebar.success("Running in Live Trading Mode")
-
-class UIManager:
-    def __init__(self, bot):
-        self.bot = bot
-        self.components = {
-            'sidebar_controls': SidebarControls(),
-            'status_table': StatusTable(bot) if bot else None,
-            'trade_messages': TradeMessages(),
-            'error_message': ErrorMessage(),
-            'trading_controls': TradingControls(),
-            'symbol_selector': SymbolSelector(),
-            'chart_display': ChartDisplay(),
-            'simulation_indicator': SimulationIndicator(),
-        }
-
-    def initialize_session_state(self):
-        """Initialize session state variables"""
-        logger.info("Initializing session state")
-        if 'trade_messages' not in st.session_state:
-            st.session_state.trade_messages = []
-
-    def display_component(self, component_name: str, *args, **kwargs):
-        if component_name in self.components:
-            logger.info(f"Displaying component: {component_name}")
-            return self.components[component_name].display(*args, **kwargs)
-        else:
-            logger.error(f"Component '{component_name}' not found")
-            st.error(f"UI component '{component_name}' not found")

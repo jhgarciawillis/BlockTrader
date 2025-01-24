@@ -40,7 +40,7 @@ def main():
     
     try:
         # Initialize session state before other operations
-        ui_manager.initialize_session_state()
+        ui_manager.initialize()
 
         logger.info("Initializing KuCoin client...")
         if not config_manager.get_config('simulation_mode')['enabled']:
