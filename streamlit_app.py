@@ -35,11 +35,8 @@ def main():
 
     error_container = st.empty()
     
-    # Create UI manager without initializing bot first
-    ui_manager = UIManager(None)
-    
-    # Initialize session state variables
-    ui_manager.initialize()
+    # Create UI manager and explicitly call initialize
+    ui_manager = UIManager(None).initialize()
 
     try:
         logger.info("Initializing KuCoin client...")
