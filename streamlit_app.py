@@ -38,7 +38,7 @@ def main():
     error_container = st.empty()
     
     try:
-        # Call separate initialization function
+        # Call session state initialization function
         initialize_ui_session_state()
 
         logger.info("Initializing KuCoin client...")
