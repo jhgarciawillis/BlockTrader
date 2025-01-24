@@ -185,7 +185,6 @@ class SimulationIndicator(UIComponent):
         else:
             st.sidebar.success("Running in Live Trading Mode")
 
-
 class UIManager:
     def __init__(self, bot):
         self.bot = bot
@@ -200,12 +199,11 @@ class UIManager:
             'simulation_indicator': SimulationIndicator(),
         }
 
-    def initialize(self):
+    def initialize_session_state(self):
         """Initialize session state variables"""
-        logger.info("Initializing UIManager session state")
+        logger.info("Initializing session state")
         if 'trade_messages' not in st.session_state:
             st.session_state.trade_messages = []
-        return self  # Return self to allow method chaining
 
     def display_component(self, component_name: str, *args, **kwargs):
         if component_name in self.components:

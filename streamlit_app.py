@@ -6,7 +6,7 @@ from config import config_manager
 from trading_bot import TradingBot
 from chart_utils import ChartCreator
 from trading_loop import initialize_trading_loop, stop_trading_loop
-from ui_components import UIManager
+from ui_components import UIManager, StatusTable
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -35,10 +35,13 @@ def main():
 
     error_container = st.empty()
     
-    # Create UI manager and explicitly call initialize
-    ui_manager = UIManager(None).initialize()
-
+    # Create UI manager
+    ui_manager = UIManager(None)
+    
     try:
+        # Initialize session state before other operations
+        ui_manager.initialize_session_state()
+
         logger.info("Initializing KuCoin client...")
         if not config_manager.get_config('simulation_mode')['enabled']:
             config_manager.initialize_kucoin_client()
@@ -61,8 +64,6 @@ def main():
         # Initialize bot
         bot = initialize_bot(is_simulation, liquid_ratio, initial_balance)
         ui_manager.bot = bot  # Update UI manager with the initialized bot
-
-        # Update status table and other components
         ui_manager.components['status_table'] = StatusTable(bot)
 
         # Symbol selector
@@ -97,7 +98,7 @@ def main():
             st.session_state.is_trading = True
             bot.profit_margin = profit_margin_percentage
             st.session_state.stop_event, st.session_state.trading_task = initialize_trading_loop(
-                bot, user_selected_symbols, profit_margin_percentage
+                bot, user_selected_symbols
             )
             st.sidebar.success("Trading started.")
 
