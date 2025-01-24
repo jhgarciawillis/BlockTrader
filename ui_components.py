@@ -32,10 +32,6 @@ class UIManager:
             logger.error(f"Component '{component_name}' not found")
             st.error(f"UI component '{component_name}' not found")
 
-class UIComponent:
-    def display(self, *args, **kwargs):
-        raise NotImplementedError("Subclasses must implement display method")
-
 class SidebarControls(UIComponent):
     def display(self) -> Tuple[bool, Optional[float], float, float, int]:
         logger.info("Displaying sidebar controls.")

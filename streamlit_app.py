@@ -42,6 +42,7 @@ def main():
         st.session_state.trade_messages = []
 
     try:
+        # Explicitly remove any initialize method call
         logger.info("Initializing KuCoin client...")
         if not config_manager.get_config('simulation_mode')['enabled']:
             config_manager.initialize_kucoin_client()
