@@ -7,8 +7,8 @@ from trading_bot import TradingBot
 from chart_utils import ChartCreator
 from trading_loop import initialize_trading_loop, stop_trading_loop
 
-# Import explicitly to ensure method is recognized
-from ui_components import UIManager, StatusTable
+# Import explicitly
+from ui_components import UIManager, StatusTable, initialize_ui_session_state
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -37,12 +37,9 @@ def main():
 
     error_container = st.empty()
     
-    # Create UI manager
-    ui_manager = UIManager(None)
-    
     try:
-        # Explicitly call initialize method
-        ui_manager.initialize()
+        # Call separate initialization function
+        initialize_ui_session_state()
 
         logger.info("Initializing KuCoin client...")
         if not config_manager.get_config('simulation_mode')['enabled']:
@@ -56,6 +53,9 @@ def main():
             st.session_state.trading_task = None
         if 'user_inputs' not in st.session_state:
             st.session_state.user_inputs = {}
+
+        # Create UI manager
+        ui_manager = UIManager(None)
 
         # Sidebar controls
         is_simulation, initial_balance, liquid_ratio, profit_margin_percentage, max_total_orders = ui_manager.display_component('sidebar_controls')
@@ -145,10 +145,9 @@ def main():
         # Display simulation indicator
         ui_manager.display_component('simulation_indicator', is_simulation=is_simulation)
 
-
     except Exception as e:
         logger.error(f"An error occurred in the main function: {e}")
-        ui_manager.display_component('error_message', error_message=str(e), container=error_container)
+        st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()

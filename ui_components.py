@@ -6,69 +6,17 @@ from config import config_manager
 
 logger = logging.getLogger(__name__)
 
+def initialize_ui_session_state():
+    """
+    Separate function to initialize session state
+    """
+    logger.info("Initializing session state")
+    if 'trade_messages' not in st.session_state:
+        st.session_state.trade_messages = []
+
 class UIComponent:
     def display(self, *args, **kwargs):
         raise NotImplementedError("Subclasses must implement display method")
-
-class UIManager:
-    def __init__(self, bot):
-        self.bot = bot
-        self.components = {
-            'sidebar_controls': SidebarControls(),
-            'status_table': StatusTable(bot) if bot else None,
-            'trade_messages': TradeMessages(),
-            'error_message': ErrorMessage(),
-            'trading_controls': TradingControls(),
-            'symbol_selector': SymbolSelector(),
-            'chart_display': ChartDisplay(),
-            'simulation_indicator': SimulationIndicator(),
-        }
-
-    def initialize(self):
-        """
-        Initialize session state variables
-        """
-        logger.info("Initializing session state")
-        
-        # Initialize trade messages if not exist
-        if 'trade_messages' not in st.session_state:
-            st.session_state.trade_messages = []
-        
-        return self
-
-    def __getattr__(self, name):
-        """
-        Fallback method to handle dynamic attribute access
-        """
-        if name == 'initialize_session_state':
-            return self.initialize
-        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
-
-    def display_component(self, component_name: str, *args, **kwargs):
-        if component_name in self.components:
-            logger.info(f"Displaying component: {component_name}")
-            return self.components[component_name].display(*args, **kwargs)
-        else:
-            logger.error(f"Component '{component_name}' not found")
-            st.error(f"UI component '{component_name}' not found")
-
-    def initialize(self):
-        """
-        Initialize session state variables
-        This method is explicitly defined to ensure compatibility
-        """
-        logger.info("Initializing session state")
-        if 'trade_messages' not in st.session_state:
-            st.session_state.trade_messages = []
-        return self
-
-    def display_component(self, component_name: str, *args, **kwargs):
-        if component_name in self.components:
-            logger.info(f"Displaying component: {component_name}")
-            return self.components[component_name].display(*args, **kwargs)
-        else:
-            logger.error(f"Component '{component_name}' not found")
-            st.error(f"UI component '{component_name}' not found")
 
 class SidebarControls(UIComponent):
     def display(self) -> Tuple[bool, Optional[float], float, float, int]:
@@ -244,3 +192,25 @@ class SimulationIndicator(UIComponent):
             st.sidebar.warning("Running in Simulation Mode")
         else:
             st.sidebar.success("Running in Live Trading Mode")
+
+class UIManager:
+    def __init__(self, bot):
+        self.bot = bot
+        self.components = {
+            'sidebar_controls': SidebarControls(),
+            'status_table': StatusTable(bot) if bot else None,
+            'trade_messages': TradeMessages(),
+            'error_message': ErrorMessage(),
+            'trading_controls': TradingControls(),
+            'symbol_selector': SymbolSelector(),
+            'chart_display': ChartDisplay(),
+            'simulation_indicator': SimulationIndicator(),
+        }
+
+    def display_component(self, component_name: str, *args, **kwargs):
+        if component_name in self.components:
+            logger.info(f"Displaying component: {component_name}")
+            return self.components[component_name].display(*args, **kwargs)
+        else:
+            logger.error(f"Component '{component_name}' not found")
+            st.error(f"UI component '{component_name}' not found")
