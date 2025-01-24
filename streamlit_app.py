@@ -6,6 +6,8 @@ from config import config_manager
 from trading_bot import TradingBot
 from chart_utils import ChartCreator
 from trading_loop import initialize_trading_loop, stop_trading_loop
+
+# Import explicitly to ensure method is recognized
 from ui_components import UIManager, StatusTable
 
 # Set up logging
@@ -39,7 +41,7 @@ def main():
     ui_manager = UIManager(None)
     
     try:
-        # Initialize session state before other operations
+        # Explicitly call initialize method
         ui_manager.initialize()
 
         logger.info("Initializing KuCoin client...")

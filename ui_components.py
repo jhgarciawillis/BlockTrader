@@ -25,15 +25,14 @@ class UIManager:
         }
 
     def initialize(self):
-        """Initialize session state variables"""
+        """
+        Initialize session state variables
+        This method is explicitly defined to ensure compatibility
+        """
         logger.info("Initializing session state")
         if 'trade_messages' not in st.session_state:
             st.session_state.trade_messages = []
         return self
-
-    def initialize_session_state(self):
-        """Alias for initialize method"""
-        return self.initialize()
 
     def display_component(self, component_name: str, *args, **kwargs):
         if component_name in self.components:
