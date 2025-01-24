@@ -199,6 +199,11 @@ class UIManager:
             'simulation_indicator': SimulationIndicator(),
         }
 
+    def initialize(self):
+        # Initialize session state variables if they don't exist
+        if 'trade_messages' not in st.session_state:
+            st.session_state.trade_messages = []
+
     def display_component(self, component_name: str, *args, **kwargs):
         if component_name in self.components:
             logger.info(f"Displaying component: {component_name}")

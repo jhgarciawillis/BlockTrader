@@ -34,14 +34,17 @@ def main():
     st.title("Cryptocurrency Trading Bot")
 
     error_container = st.empty()
-    ui_manager = UIManager(None)  # Initialize UI manager at the beginning
+    
+    # Create UI manager without initializing bot first
+    ui_manager = UIManager(None)
+    
+    # Initialize session state variables
+    ui_manager.initialize()
 
     try:
         logger.info("Initializing KuCoin client...")
         if not config_manager.get_config('simulation_mode')['enabled']:
             config_manager.initialize_kucoin_client()
-        logger.info("Initializing session state...")
-        ui_manager.initialize()
 
         if 'is_trading' not in st.session_state:
             st.session_state.is_trading = False
@@ -61,6 +64,9 @@ def main():
         # Initialize bot
         bot = initialize_bot(is_simulation, liquid_ratio, initial_balance)
         ui_manager.bot = bot  # Update UI manager with the initialized bot
+
+        # Update status table and other components
+        ui_manager.components['status_table'] = StatusTable(bot)
 
         # Symbol selector
         available_symbols = config_manager.get_available_trading_symbols()
