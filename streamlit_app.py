@@ -2,7 +2,7 @@ import streamlit as st
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any
-from config import config_manager
+from config import config_manager, kucoin_client_manager
 from trading_bot import TradingBot
 from chart_utils import ChartCreator
 from trading_loop import initialize_trading_loop, stop_trading_loop
@@ -87,6 +87,8 @@ def main():
         ui_manager.components['status_table'] = StatusTable(bot)
 
         # Symbol selector
+        if not kucoin_client_manager.client:
+            config_manager.initialize_kucoin_client()
         available_symbols = config_manager.get_available_trading_symbols()
         if not available_symbols:
             st.warning("No available trading symbols found. Please check your KuCoin API connection.")

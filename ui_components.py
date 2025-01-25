@@ -33,10 +33,9 @@ class UIManager:
             st.error(f"UI component '{component_name}' not found")
 
 class SidebarControls(UIComponent):
-    def display(self) -> Tuple[bool, Optional[float], float, float, int]:
+    def display(self, is_simulation: bool) -> Tuple[Optional[float], float, float, int]:
         logger.info("Displaying sidebar controls.")
         st.sidebar.header("Configuration")
-        is_simulation = st.sidebar.checkbox("Simulation Mode", value=config_manager.get_config('simulation_mode')['enabled'], key='is_simulation')
         if is_simulation:
             logger.info("Simulation mode selected.")
             st.sidebar.write("Running in simulation mode. No real trades will be executed.")
@@ -48,14 +47,6 @@ class SidebarControls(UIComponent):
                 key='simulated_usdt_balance'
             )
         else:
-            logger.info("Live trading mode selected.")
-            st.sidebar.warning("WARNING: This bot will use real funds on the live KuCoin exchange.")
-            st.sidebar.warning("Only proceed if you understand the risks and are using funds you can afford to lose.")
-            proceed = st.sidebar.checkbox("I understand the risks and want to proceed", key="proceed_checkbox")
-            if not proceed:
-                logger.info("User did not proceed with live trading.")
-                st.sidebar.error("Please check the box to proceed with live trading.")
-                return None, None, None, None, None
             simulated_usdt_balance = None
             
         liquid_ratio = st.sidebar.number_input(
@@ -86,8 +77,8 @@ class SidebarControls(UIComponent):
             key='max_total_orders'
         )
 
-        return is_simulation, simulated_usdt_balance, liquid_ratio, profit_margin_percentage, max_total_orders
-
+        return simulated_usdt_balance, liquid_ratio, profit_margin_percentage, max_total_orders
+    
 class StatusTable(UIComponent):
     def __init__(self, bot):
         self.bot = bot

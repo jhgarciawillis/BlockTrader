@@ -136,7 +136,7 @@ class ConfigManager:
                 secret=st.secrets["api_credentials"]["api_secret"],
                 passphrase=st.secrets["api_credentials"]["api_passphrase"]
             )
-            self.client = kucoin_client_manager.get_client()
+            logger.info("KuCoin client initialized successfully.")
         except KeyError as e:
             logger.error(f"Missing API credential in Streamlit secrets: {e}")
             raise
