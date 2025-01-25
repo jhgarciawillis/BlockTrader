@@ -44,7 +44,10 @@ def main():
     try:
         # Explicitly remove any initialize method call
         logger.info("Initializing KuCoin client...")
-        if not config_manager.get_config('simulation_mode')['enabled']:
+        
+        is_simulation = st.sidebar.checkbox("Simulation Mode", value=config_manager.get_config('simulation_mode')['enabled'], key='is_simulation')
+        
+        if not is_simulation:
             perso_key = st.sidebar.text_input("Enter your personal key:", type="password")
             if not perso_key:
                 st.warning("Please enter your personal key to use live trading mode.")
@@ -52,8 +55,17 @@ def main():
             if not config_manager.verify_live_trading_access(perso_key):
                 st.error("Invalid personal key. Please enter the correct key to proceed.")
                 return
+            
+            st.sidebar.warning("WARNING: This bot will use real funds on the live KuCoin exchange.")
+            st.sidebar.warning("Only proceed if you understand the risks and are using funds you can afford to lose.")
+            proceed = st.sidebar.checkbox("I understand the risks and want to proceed", key="proceed_checkbox")
+            if not proceed:
+                logger.info("User did not proceed with live trading.")
+                st.sidebar.error("Please check the box to proceed with live trading.")
+                return
+            
             config_manager.initialize_kucoin_client()
-
+        
         if 'is_trading' not in st.session_state:
             st.session_state.is_trading = False
         if 'stop_event' not in st.session_state:
@@ -67,10 +79,7 @@ def main():
         ui_manager = UIManager(None)
 
         # Sidebar controls
-        is_simulation, initial_balance, liquid_ratio, profit_margin_percentage, max_total_orders = ui_manager.display_component('sidebar_controls')
-        
-        if is_simulation is None:
-            return
+        initial_balance, liquid_ratio, profit_margin_percentage, max_total_orders = ui_manager.display_component('sidebar_controls', is_simulation=is_simulation)
 
         # Initialize bot
         bot = initialize_bot(is_simulation, liquid_ratio, initial_balance)
