@@ -45,6 +45,13 @@ def main():
         # Explicitly remove any initialize method call
         logger.info("Initializing KuCoin client...")
         if not config_manager.get_config('simulation_mode')['enabled']:
+            perso_key = st.sidebar.text_input("Enter your personal key:", type="password")
+            if not perso_key:
+                st.warning("Please enter your personal key to use live trading mode.")
+                return
+            if not config_manager.verify_live_trading_access(perso_key):
+                st.error("Invalid personal key. Please enter the correct key to proceed.")
+                return
             config_manager.initialize_kucoin_client()
 
         if 'is_trading' not in st.session_state:
