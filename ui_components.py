@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from typing import Dict, List, Tuple, Any, Optional
 import logging
-from config import config_manager
+from config import config_manager, DEFAULT_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,15 @@ class UIManager:
     def display_component(self, component_name: str, *args, **kwargs):
         if component_name in self.components:
             logger.info(f"Displaying component: {component_name}")
+            
+            # Special handling for symbol selector to ensure it has symbols
+            if component_name == 'symbol_selector':
+                available_symbols = kwargs.get('available_symbols', [])
+                if not available_symbols:
+                    logger.warning("No symbols available, using defaults")
+                    available_symbols = DEFAULT_CONFIG['trading_symbols']
+                    kwargs['available_symbols'] = available_symbols
+            
             return self.components[component_name].display(*args, **kwargs)
         else:
             logger.error(f"Component '{component_name}' not found")
@@ -83,14 +92,48 @@ class StatusTable(UIComponent):
     def __init__(self, bot):
         self.bot = bot
 
-    def display(self, current_status: Dict[str, Any]) -> None:
+    def display(self, current_status: Dict[str, Any] = None) -> None:
         if not current_status:
             logger.warning("No current status available.")
             st.warning("No current status available.")
             return
         logger.info("Displaying status table.")
+        
+        # Show pending orders if any
+        if current_status.get('pending_orders', {}):
+            st.subheader("Pending Orders")
+            pending_orders_df = self._create_pending_orders_dataframe(current_status)
+            st.dataframe(pending_orders_df, use_container_width=True)
+        
+        # Overall status
         status_df = self._create_status_dataframe(current_status)
         st.dataframe(status_df, use_container_width=True)
+
+    def _create_pending_orders_dataframe(self, current_status: Dict[str, Any]) -> pd.DataFrame:
+        logger.info("Creating pending orders dataframe.")
+        pending_orders = current_status.get('pending_orders', {})
+        
+        if not pending_orders:
+            return pd.DataFrame()
+        
+        data = {
+            'Symbol': [],
+            'Type': [],
+            'Price': [],
+            'Amount': [],
+            'Order Time': [],
+            'Status': []
+        }
+        
+        for order_id, order in pending_orders.items():
+            data['Symbol'].append(order['symbol'])
+            data['Type'].append('Buy' if order['side'] == 'buy' else 'Sell')
+            data['Price'].append(f"{order['price']:.4f} USDT")
+            data['Amount'].append(f"{order['amount']:.8f}")
+            data['Order Time'].append(order['order_time'].strftime('%Y-%m-%d %H:%M:%S'))
+            data['Status'].append('Pending')
+        
+        return pd.DataFrame(data)
 
     def _create_symbol_status_data(self, current_status: Dict[str, Any]) -> Dict[str, List[Any]]:
         logger.info("Creating symbol status data.")
@@ -142,7 +185,7 @@ class StatusTable(UIComponent):
     def _format_target_sell_price(active_trades: Dict[str, Dict[str, Any]], symbol: str, profit_margin: float) -> str:
         buy_order = next((trade for trade in active_trades.values() if trade['symbol'] == symbol), None)
         if buy_order:
-            target_sell_price = buy_order['buy_price'] * (1 + profit_margin)
+            target_sell_price = buy_order.get('target_sell_price', buy_order['buy_price'] * (1 + profit_margin))
             return f"{target_sell_price:.4f} USDT"
         return 'N/A'
 
@@ -158,49 +201,6 @@ class StatusTable(UIComponent):
     @staticmethod
     def _format_realized_profit(profits: Dict[str, float], symbol: str) -> str:
         return f"{profits.get(symbol, 0):.4f} USDT"
-
-    def _create_pending_orders_dataframe(self, current_status: Dict[str, Any]) -> pd.DataFrame:
-        logger.info("Creating pending orders dataframe.")
-        pending_orders = current_status.get('pending_orders', {})
-        
-        if not pending_orders:
-            return pd.DataFrame()
-        
-        data = {
-            'Symbol': [],
-            'Type': [],
-            'Price': [],
-            'Amount': [],
-            'Order Time': [],
-            'Status': []
-        }
-        
-        for order_id, order in pending_orders.items():
-            data['Symbol'].append(order['symbol'])
-            data['Type'].append('Buy' if order['side'] == 'buy' else 'Sell')
-            data['Price'].append(f"{order['price']:.4f} USDT")
-            data['Amount'].append(f"{order['amount']:.8f}")
-            data['Order Time'].append(order['order_time'].strftime('%Y-%m-%d %H:%M:%S'))
-            data['Status'].append('Pending')
-        
-        return pd.DataFrame(data)
-
-    def display(self, current_status: Dict[str, Any]) -> None:
-        if not current_status:
-            logger.warning("No current status available.")
-            st.warning("No current status available.")
-            return
-        logger.info("Displaying status table.")
-        
-        # Show pending orders if any
-        if current_status.get('pending_orders', {}):
-            st.subheader("Pending Orders")
-            pending_orders_df = self._create_pending_orders_dataframe(current_status)
-            st.dataframe(pending_orders_df, use_container_width=True)
-        
-        # Overall status
-        status_df = self._create_status_dataframe(current_status)
-        st.dataframe(status_df, use_container_width=True)
 
 class TradeMessages(UIComponent):
     def display(self) -> None:
@@ -224,14 +224,42 @@ class TradingControls(UIComponent):
 class SymbolSelector(UIComponent):
     def display(self, available_symbols: List[str], default_symbols: List[str]) -> List[str]:
         logger.info("Displaying symbol selector.")
-        return st.sidebar.multiselect("Select Symbols to Trade", available_symbols, default=default_symbols, key='selected_symbols')
+        # Ensure we have symbols to display
+        if not available_symbols:
+            logger.warning("No available symbols provided, using default symbols")
+            available_symbols = DEFAULT_CONFIG['trading_symbols']
+        
+        if not default_symbols:
+            logger.warning("No default symbols provided, using first symbol")
+            default_symbols = [available_symbols[0]] if available_symbols else []
+        
+        selected_symbols = st.sidebar.multiselect(
+            "Select Symbols to Trade", 
+            options=available_symbols, 
+            default=default_symbols, 
+            key='selected_symbols'
+        )
+        
+        # Fallback if nothing selected
+        if not selected_symbols and available_symbols:
+            logger.warning("No symbols selected, using first available symbol")
+            selected_symbols = [available_symbols[0]]
+            st.sidebar.warning(f"No symbols selected. Using {selected_symbols[0]} by default.")
+        
+        return selected_symbols
 
 class ChartDisplay(UIComponent):
     def display(self, charts: Dict[str, Any]) -> None:
         logger.info("Displaying charts.")
-        for symbol, chart in charts['individual_price_charts'].items():
+        if not charts:
+            st.info("No chart data available yet. Start trading to see charts.")
+            return
+            
+        for symbol, chart in charts.get('individual_price_charts', {}).items():
             st.plotly_chart(chart, use_container_width=True)
-        st.plotly_chart(charts['total_profit'], use_container_width=True)
+        
+        if 'total_profit' in charts:
+            st.plotly_chart(charts['total_profit'], use_container_width=True)
 
 class SimulationIndicator(UIComponent):
     def display(self, is_simulation: bool) -> None:
