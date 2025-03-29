@@ -2,9 +2,14 @@ import time
 import uuid
 import logging
 from typing import Dict, Any, List
-from kucoin.client import Trade
 
 logger = logging.getLogger(__name__)
+
+# Define constants to avoid dependency on the KuCoin client
+ORDER_LIMIT = 'limit'
+SIDE_BUY = 'buy'
+SIDE_SELL = 'sell'
+TIMEINFORCE_GOOD_TILL_CANCELLED = 'GTC'
 
 class SimulatedTradeClient:
     def __init__(self, fees: Dict[str, float], max_total_orders: int, currency_allocations: Dict[str, float]):
@@ -30,7 +35,7 @@ class SimulatedTradeClient:
             'orderId': order_id,
             'symbol': symbol,
             'opType': 'DEAL',
-            'type': Trade.ORDER_LIMIT,
+            'type': ORDER_LIMIT,
             'side': side,
             'price': str(price),
             'size': str(size),
@@ -42,7 +47,7 @@ class SimulatedTradeClient:
             'createdAt': timestamp,
             'updatedAt': timestamp,
             'status': 'active',  # Start as active, not immediately done
-            'timeInForce': kwargs.get('timeInForce', Trade.TIMEINFORCE_GOOD_TILL_CANCELLED),
+            'timeInForce': kwargs.get('timeInForce', TIMEINFORCE_GOOD_TILL_CANCELLED),
             'postOnly': kwargs.get('postOnly', False),
             'hidden': kwargs.get('hidden', False),
             'iceberg': kwargs.get('iceberg', False),
@@ -60,17 +65,23 @@ class SimulatedTradeClient:
         self.orders[order_id] = order
         logger.info(f"Created simulated {side} order: {size:.8f} {symbol} at {price:.4f} USDT")
         
-        return {'orderId': order_id}
-
-    def get_order(self, order_id: str) -> Dict[str, Any]:
-        order = self.orders.get(order_id, {})
+        # For simulation, let's fill the order after a short delay
+        self._simulate_fill_after_delay(order_id)
         
-        # Simulate order filling based on time passed
-        if order and order['status'] == 'active':
-            # For simulation, let's fill the order after a short delay
-            if time.time() * 1000 - order['createdAt'] > 5000:  # 5 seconds delay
-                self._fill_order(order_id)
-                
+        return {'orderId': order_id}
+    
+    def _simulate_fill_after_delay(self, order_id):
+        """Simulate order filling after a delay by marking it as ready to fill"""
+        self.pending_orders[order_id] = {
+            'ready_time': time.time() + 5  # 5 seconds delay
+        }
+    
+    def get_order(self, order_id: str):
+        # Check if there's a pending order ready to fill
+        if order_id in self.pending_orders and time.time() > self.pending_orders[order_id]['ready_time']:
+            self._fill_order(order_id)
+            del self.pending_orders[order_id]
+            
         return self.orders.get(order_id, {})
 
     def _fill_order(self, order_id: str) -> None:
@@ -81,12 +92,12 @@ class SimulatedTradeClient:
         order = self.orders[order_id]
         if order['status'] != 'active':
             return
-            
+        
         side = order['side']
         price = float(order['price'])
         size = float(order['size'])
         
-        if side == Trade.SIDE_BUY:
+        if side == SIDE_BUY:
             # Calculate fee in USDT
             amount_usdt = size * price
             fee_usdt = amount_usdt * self.TAKER_FEE
@@ -120,16 +131,18 @@ class SimulatedTradeClient:
             
         self.orders[order_id] = order
 
-    def cancel_order(self, order_id: str) -> Dict[str, Any]:
+    def cancel_order(self, order_id: str):
         if order_id in self.orders:
             self.orders[order_id]['status'] = 'cancelled'
             self.orders[order_id]['isActive'] = False
             self.orders[order_id]['updatedAt'] = int(time.time() * 1000)
             logger.info(f"Cancelled order: {order_id}")
+            if order_id in self.pending_orders:
+                del self.pending_orders[order_id]
             return {'cancelledOrderIds': [order_id]}
         return {'cancelledOrderIds': []}
 
-    def get_fills(self, trade_type: str = 'TRADE', order_id: str = None) -> List[Dict[str, Any]]:
+    def get_fills(self, trade_type: str = 'TRADE', order_id: str = None):
         fills = []
         for order in self.orders.values():
             if order['status'] == 'done':
@@ -155,7 +168,7 @@ class SimulatedTradeClient:
                     })
         return fills
 
-    def get_orders(self, symbol: str = None, status: str = None) -> List[Dict[str, Any]]:
+    def get_orders(self, symbol: str = None, status: str = None):
         orders = []
         for order in self.orders.values():
             if (symbol is None or order['symbol'] == symbol) and \
@@ -165,5 +178,5 @@ class SimulatedTradeClient:
                 orders.append(order)
         return orders
 
-def create_simulated_trade_client(fees: Dict[str, float], max_total_orders: int, currency_allocations: Dict[str, float]) -> SimulatedTradeClient:
+def create_simulated_trade_client(fees: dict, max_total_orders: int, currency_allocations: dict) -> SimulatedTradeClient:
     return SimulatedTradeClient(fees, max_total_orders, currency_allocations)

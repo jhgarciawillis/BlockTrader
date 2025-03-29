@@ -6,8 +6,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from wallet import create_wallet
 from config import config_manager
 from utils import handle_trading_errors
-from kucoin.client import Client
-from simulated_trade_client import SimulatedTradeClient
+from simulated_trade_client import SimulatedTradeClient, SIDE_BUY, SIDE_SELL
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ class TradingBot:
         self.total_trades: int = 0
         self.status_history: List[Dict] = []
         self.is_simulation: bool = False
-        self.trade_client: Optional[Union[Client, SimulatedTradeClient]] = None
+        self.trade_client = None
         self.max_total_orders: int = config_manager.get_max_total_orders()
         self.currency_allocations: Dict[str, float] = config_manager.get_currency_allocations()
         self.active_orders: Dict[str, List[Dict]] = {}
@@ -120,7 +119,7 @@ class TradingBot:
             
             order = self.trade_client.create_limit_order(
                 symbol=symbol,
-                side=Client.SIDE_BUY,
+                side=SIDE_BUY,
                 price=str(limit_price),
                 size=str(crypto_amount),
             )
@@ -129,7 +128,7 @@ class TradingBot:
                 # Add to pending orders for tracking
                 self.pending_orders[order['orderId']] = {
                     'symbol': symbol,
-                    'side': Client.SIDE_BUY,
+                    'side': SIDE_BUY,
                     'price': limit_price,
                     'amount': crypto_amount,
                     'amount_usdt': amount_usdt,
@@ -157,7 +156,7 @@ class TradingBot:
         try:
             order = self.trade_client.create_limit_order(
                 symbol=symbol,
-                side=Client.SIDE_SELL,
+                side=SIDE_SELL,
                 price=str(target_sell_price),
                 size=str(amount_crypto),
             )
@@ -166,7 +165,7 @@ class TradingBot:
                 # Add to pending orders for tracking
                 self.pending_orders[order['orderId']] = {
                     'symbol': symbol,
-                    'side': Client.SIDE_SELL,
+                    'side': SIDE_SELL,
                     'price': target_sell_price,
                     'amount': amount_crypto,
                     'order_time': datetime.now(),
@@ -187,73 +186,73 @@ class TradingBot:
 
     @handle_trading_errors
     def check_pending_orders(self) -> None:
-        """Check status of pending orders and update accordingly"""
-        for order_id, order_data in list(self.pending_orders.items()):
-            try:
-                order_info = self.trade_client.get_order(order_id)
-                
-                # If order is filled
-                if order_info.get('status') == 'done':
-                    symbol = order_data['symbol']
-                    side = order_data['side']
-                    
-                    if side == Client.SIDE_BUY:
-                        # Move to active trades
-                        self.active_trades[order_id] = {
-                            'symbol': symbol,
-                            'buy_price': float(order_data['price']),
-                            'amount': float(order_data['amount']),
-                            'buy_time': order_data['order_time'],
-                            'target_sell_price': order_data['target_sell_price']
-                        }
-                        
-                        # Update wallet
-                        self.wallet.update_account_balance(
-                            'trading', 
-                            symbol, 
-                            float(order_data['amount']), 
-                            float(order_data['price']), 
-                            float(order_info.get('fee', 0)), 
-                            side
-                        )
-                        
-                        logger.info(f"Buy order {order_id} for {symbol} filled at {order_data['price']}")
-                        
-                    elif side == Client.SIDE_SELL:
-                        # Get the corresponding buy order
-                        buy_order_id = order_data['buy_order_id']
-                        buy_data = self.active_trades.get(buy_order_id)
-                        
-                        if buy_data:
-                            # Calculate profit
-                            profit = self.calculate_profit(buy_data, order_info)
-                            self.update_profit(symbol, profit)
-                            
-                            # Update wallet
-                            self.wallet.update_account_balance(
-                                'trading', 
-                                symbol, 
-                                float(order_data['amount']), 
-                                float(order_data['price']), 
-                                float(order_info.get('fee', 0)), 
-                                side
-                            )
-                            
-                            logger.info(f"Sell order {order_id} for {symbol} filled at {order_data['price']} (Profit: {profit} USDT)")
-                            
-                            # Remove the buy order from active trades
-                            del self.active_trades[buy_order_id]
-                    
-                    # Remove from pending orders
-                    del self.pending_orders[order_id]
-                    
-                # Handle cancelled orders
-                elif order_info.get('status') == 'cancelled':
-                    logger.info(f"Order {order_id} for {order_data['symbol']} was cancelled")
-                    del self.pending_orders[order_id]
-                
-            except Exception as e:
-                logger.error(f"Error checking order {order_id}: {e}")
+       """Check status of pending orders and update accordingly"""
+       for order_id, order_data in list(self.pending_orders.items()):
+           try:
+               order_info = self.trade_client.get_order(order_id)
+               
+               # If order is filled
+               if order_info.get('status') == 'done':
+                   symbol = order_data['symbol']
+                   side = order_data['side']
+                   
+                   if side == SIDE_BUY:
+                       # Move to active trades
+                       self.active_trades[order_id] = {
+                           'symbol': symbol,
+                           'buy_price': float(order_data['price']),
+                           'amount': float(order_data['amount']),
+                           'buy_time': order_data['order_time'],
+                           'target_sell_price': order_data['target_sell_price']
+                       }
+                       
+                       # Update wallet
+                       self.wallet.update_account_balance(
+                           'trading', 
+                           symbol, 
+                           float(order_data['amount']), 
+                           float(order_data['price']), 
+                           float(order_info.get('fee', 0)), 
+                           side
+                       )
+                       
+                       logger.info(f"Buy order {order_id} for {symbol} filled at {order_data['price']}")
+                       
+                   elif side == SIDE_SELL:
+                       # Get the corresponding buy order
+                       buy_order_id = order_data['buy_order_id']
+                       buy_data = self.active_trades.get(buy_order_id)
+                       
+                       if buy_data:
+                           # Calculate profit
+                           profit = self.calculate_profit(buy_data, order_info)
+                           self.update_profit(symbol, profit)
+                           
+                           # Update wallet
+                           self.wallet.update_account_balance(
+                               'trading', 
+                               symbol, 
+                               float(order_data['amount']), 
+                               float(order_data['price']), 
+                               float(order_info.get('fee', 0)), 
+                               side
+                           )
+                           
+                           logger.info(f"Sell order {order_id} for {symbol} filled at {order_data['price']} (Profit: {profit} USDT)")
+                           
+                           # Remove the buy order from active trades
+                           del self.active_trades[buy_order_id]
+                   
+                   # Remove from pending orders
+                   del self.pending_orders[order_id]
+                   
+               # Handle cancelled orders
+               elif order_info.get('status') == 'cancelled':
+                   logger.info(f"Order {order_id} for {order_data['symbol']} was cancelled")
+                   del self.pending_orders[order_id]
+               
+           except Exception as e:
+               logger.error(f"Error checking order {order_id}: {e}")
 
     def calculate_profit(self, buy_data: Dict, sell_order: Dict) -> float:
        buy_price = buy_data['buy_price']

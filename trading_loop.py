@@ -5,7 +5,7 @@ from typing import List, Tuple, Dict, Any
 from trading_bot import TradingBot
 import logging
 from config import config_manager
-from kucoin.client import Client
+from simulated_trade_client import SIDE_BUY, SIDE_SELL
 from utils import handle_trading_errors
 
 logger = logging.getLogger(__name__)
