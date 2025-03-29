@@ -52,7 +52,7 @@ class ConfigManager:
                 'api_secret': st.secrets["api_credentials"]["api_secret"],
                 'api_passphrase': st.secrets["api_credentials"]["api_passphrase"],
                 'api_url': 'https://api.kucoin.com',
-                'live_trading_access_key': st.secrets["api_credentials"]["live_trading_access_key"],
+                'live_trading_access_key': st.secrets["api_credentials"]["perso_key"],
             })
         except KeyError as e:
             logger.error(f"Missing API credential in Streamlit secrets: {e}")
@@ -79,16 +79,21 @@ class ConfigManager:
 
     def get_available_trading_symbols(self) -> list:
         try:
+            from kucoin.client import Client
             client = kucoin_client_manager.get_client()
-            symbols = client.get_symbols()
-            return [
-                symbol['symbol'] for symbol in symbols 
-                if (symbol.get('quoteCurrency') == 'USDT' and 
-                    symbol.get('enableTrading'))
-            ]
+            if client:
+                symbols = client.get_symbols()
+                return [
+                    symbol['symbol'] for symbol in symbols 
+                    if (symbol.get('quoteCurrency') == 'USDT' and 
+                        symbol.get('enableTrading'))
+                ]
+            else:
+                logger.warning("KuCoin client not initialized, returning default symbols")
+                return DEFAULT_CONFIG['trading_symbols']
         except Exception as e:
             logger.error(f"Error fetching symbols: {e}")
-            return []
+            return DEFAULT_CONFIG['trading_symbols']
 
     def fetch_real_time_prices(self, symbols: list) -> dict:
         prices = {}
@@ -99,6 +104,11 @@ class ConfigManager:
                 prices[symbol] = float(ticker['price'])
         except Exception as e:
             logger.error(f"Error fetching prices: {e}")
+            # Generate random prices for simulation if needed
+            import random
+            for symbol in symbols:
+                base_price = 100 if 'BTC' in symbol else 1
+                prices[symbol] = base_price * (1 + random.uniform(-0.01, 0.01))
         return prices
 
     def place_spot_order(self, symbol: str, side: str, price: float, size: float, is_simulation: bool = False) -> Dict[str, Any]:
@@ -116,6 +126,7 @@ class ConfigManager:
                     size=str(size)
                 )
             else:
+                from kucoin.client import Client
                 client = kucoin_client_manager.get_client()
                 order = client.create_limit_order(
                     symbol=symbol,
@@ -131,15 +142,22 @@ class ConfigManager:
 
     def initialize_kucoin_client(self) -> None:
         try:
+            from kucoin.client import Client
             kucoin_client_manager.initialize(
-                key=st.secrets["api_credentials"]["api_key"],
-                secret=st.secrets["api_credentials"]["api_secret"],
-                passphrase=st.secrets["api_credentials"]["api_passphrase"]
+                key=self.config['api_key'],
+                secret=self.config['api_secret'],
+                passphrase=self.config['api_passphrase']
             )
             logger.info("KuCoin client initialized successfully.")
         except KeyError as e:
             logger.error(f"Missing API credential in Streamlit secrets: {e}")
             raise
+        except Exception as e:
+            logger.error(f"Failed to initialize KuCoin client: {e}")
+            # Create a dummy client for simulation
+            from kucoin.client import Client
+            kucoin_client_manager.client = Client("dummy", "dummy", "dummy")
+            logger.warning("Created dummy KuCoin client for simulation mode")
 
     def verify_live_trading_access(self, input_key: str) -> bool:
         return input_key == self.config['live_trading_access_key']
@@ -170,6 +188,7 @@ kucoin_client_manager = KucoinClientManager()
 
 if __name__ == "__main__":
     logger.info("Running config.py as main script")
+    config_manager.initialize_kucoin_client()
     symbols = config_manager.get_available_trading_symbols()
     logger.info(f"Available trading symbols: {symbols}")
     prices = config_manager.fetch_real_time_prices(config_manager.config['trading_symbols'])

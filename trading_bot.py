@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from wallet import create_wallet
 from config import config_manager
 from utils import handle_trading_errors
-from kucoin.client import Trade
+from kucoin.client import Client
 from simulated_trade_client import SimulatedTradeClient
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class TradingBot:
         self.total_trades: int = 0
         self.status_history: List[Dict] = []
         self.is_simulation: bool = False
-        self.trade_client: Optional[Union[Trade, SimulatedTradeClient]] = None
+        self.trade_client: Optional[Union[Client, SimulatedTradeClient]] = None
         self.max_total_orders: int = config_manager.get_max_total_orders()
         self.currency_allocations: Dict[str, float] = config_manager.get_currency_allocations()
         self.active_orders: Dict[str, List[Dict]] = {}
@@ -120,7 +120,7 @@ class TradingBot:
             
             order = self.trade_client.create_limit_order(
                 symbol=symbol,
-                side=Trade.SIDE_BUY,
+                side=Client.SIDE_BUY,
                 price=str(limit_price),
                 size=str(crypto_amount),
             )
@@ -129,7 +129,7 @@ class TradingBot:
                 # Add to pending orders for tracking
                 self.pending_orders[order['orderId']] = {
                     'symbol': symbol,
-                    'side': Trade.SIDE_BUY,
+                    'side': Client.SIDE_BUY,
                     'price': limit_price,
                     'amount': crypto_amount,
                     'amount_usdt': amount_usdt,
@@ -157,7 +157,7 @@ class TradingBot:
         try:
             order = self.trade_client.create_limit_order(
                 symbol=symbol,
-                side=Trade.SIDE_SELL,
+                side=Client.SIDE_SELL,
                 price=str(target_sell_price),
                 size=str(amount_crypto),
             )
@@ -166,7 +166,7 @@ class TradingBot:
                 # Add to pending orders for tracking
                 self.pending_orders[order['orderId']] = {
                     'symbol': symbol,
-                    'side': Trade.SIDE_SELL,
+                    'side': Client.SIDE_SELL,
                     'price': target_sell_price,
                     'amount': amount_crypto,
                     'order_time': datetime.now(),
@@ -197,7 +197,7 @@ class TradingBot:
                     symbol = order_data['symbol']
                     side = order_data['side']
                     
-                    if side == Trade.SIDE_BUY:
+                    if side == Client.SIDE_BUY:
                         # Move to active trades
                         self.active_trades[order_id] = {
                             'symbol': symbol,
@@ -219,7 +219,7 @@ class TradingBot:
                         
                         logger.info(f"Buy order {order_id} for {symbol} filled at {order_data['price']}")
                         
-                    elif side == Trade.SIDE_SELL:
+                    elif side == Client.SIDE_SELL:
                         # Get the corresponding buy order
                         buy_order_id = order_data['buy_order_id']
                         buy_data = self.active_trades.get(buy_order_id)
@@ -256,56 +256,56 @@ class TradingBot:
                 logger.error(f"Error checking order {order_id}: {e}")
 
     def calculate_profit(self, buy_data: Dict, sell_order: Dict) -> float:
-        buy_price = buy_data['buy_price']
-        buy_amount = buy_data['amount']
-        sell_price = float(sell_order.get('price', 0))
-        sell_amount = float(sell_order.get('dealSize', 0))
-        sell_fee = float(sell_order.get('fee', 0))
-        
-        # Calculate actual profit
-        buy_cost = buy_price * buy_amount * (1 + self.taker_fee)
-        sell_revenue = sell_price * sell_amount * (1 - self.taker_fee)
-        
-        profit = sell_revenue - buy_cost
-        return profit
+       buy_price = buy_data['buy_price']
+       buy_amount = buy_data['amount']
+       sell_price = float(sell_order.get('price', 0))
+       sell_amount = float(sell_order.get('dealSize', 0))
+       sell_fee = float(sell_order.get('fee', 0))
+       
+       # Calculate actual profit
+       buy_cost = buy_price * buy_amount * (1 + self.taker_fee)
+       sell_revenue = sell_price * sell_amount * (1 - self.taker_fee)
+       
+       profit = sell_revenue - buy_cost
+       return profit
 
     def update_profit(self, symbol: str, profit: float) -> None:
-        self.wallet.update_profits(symbol, profit)
-        self.total_trades += 1
+       self.wallet.update_profits(symbol, profit)
+       self.total_trades += 1
 
     def update_allocations(self, user_selected_symbols: List[str]) -> None:
-        self.symbol_allocations = self.get_user_allocations(user_selected_symbols)
-        self.currency_allocations = {symbol: 1/len(user_selected_symbols) 
-                                   for symbol in user_selected_symbols}
-        self.wallet.set_currency_allocations(self.currency_allocations)
+       self.symbol_allocations = self.get_user_allocations(user_selected_symbols)
+       self.currency_allocations = {symbol: 1/len(user_selected_symbols) 
+                                  for symbol in user_selected_symbols}
+       self.wallet.set_currency_allocations(self.currency_allocations)
 
     def get_current_status(self, prices: Dict[str, float]) -> Dict:
-        # First check pending orders to update status
-        self.check_pending_orders()
-        
-        current_total_usdt = self.wallet.get_balance('trading', 'USDT', 'liquid') + self.wallet.get_balance('trading', 'USDT', 'trading')
-        tradable_usdt = self.get_balance('USDT', 'trading')
-        liquid_usdt = self.wallet.get_balance('trading', 'USDT', 'liquid')
-        
-        status = {
-            'timestamp': datetime.now(),
-            'prices': prices,
-            'active_trades': self.active_trades.copy(),
-            'pending_orders': self.pending_orders.copy(),
-            'profits': self.wallet.get_profits(),
-            'total_profit': sum(self.wallet.get_profits().values()),
-            'current_total_usdt': current_total_usdt,
-            'tradable_usdt': tradable_usdt,
-            'liquid_usdt': liquid_usdt,
-            'wallet_summary': self.wallet.get_account_summary(),
-            'total_trades': self.total_trades,
-            'avg_profit_per_trade': sum(self.wallet.get_profits().values()) / self.total_trades 
-                                  if self.total_trades > 0 else 0,
-            'active_orders': {symbol: len(orders) for symbol, orders in self.active_orders.items()},
-        }
-        
-        self.status_history.append(status)
-        if len(self.status_history) > 120:
-            self.status_history.pop(0)
-        
-        return status
+       # First check pending orders to update status
+       self.check_pending_orders()
+       
+       current_total_usdt = self.wallet.get_balance('trading', 'USDT', 'liquid') + self.wallet.get_balance('trading', 'USDT', 'trading')
+       tradable_usdt = self.get_balance('USDT', 'trading')
+       liquid_usdt = self.wallet.get_balance('trading', 'USDT', 'liquid')
+       
+       status = {
+           'timestamp': datetime.now(),
+           'prices': prices,
+           'active_trades': self.active_trades.copy(),
+           'pending_orders': self.pending_orders.copy(),
+           'profits': self.wallet.get_profits(),
+           'total_profit': sum(self.wallet.get_profits().values()),
+           'current_total_usdt': current_total_usdt,
+           'tradable_usdt': tradable_usdt,
+           'liquid_usdt': liquid_usdt,
+           'wallet_summary': self.wallet.get_account_summary(),
+           'total_trades': self.total_trades,
+           'avg_profit_per_trade': sum(self.wallet.get_profits().values()) / self.total_trades 
+                                 if self.total_trades > 0 else 0,
+           'active_orders': {symbol: len(orders) for symbol, orders in self.active_orders.items()},
+       }
+       
+       self.status_history.append(status)
+       if len(self.status_history) > 120:
+           self.status_history.pop(0)
+       
+       return status

@@ -159,6 +159,49 @@ class StatusTable(UIComponent):
     def _format_realized_profit(profits: Dict[str, float], symbol: str) -> str:
         return f"{profits.get(symbol, 0):.4f} USDT"
 
+    def _create_pending_orders_dataframe(self, current_status: Dict[str, Any]) -> pd.DataFrame:
+        logger.info("Creating pending orders dataframe.")
+        pending_orders = current_status.get('pending_orders', {})
+        
+        if not pending_orders:
+            return pd.DataFrame()
+        
+        data = {
+            'Symbol': [],
+            'Type': [],
+            'Price': [],
+            'Amount': [],
+            'Order Time': [],
+            'Status': []
+        }
+        
+        for order_id, order in pending_orders.items():
+            data['Symbol'].append(order['symbol'])
+            data['Type'].append('Buy' if order['side'] == 'buy' else 'Sell')
+            data['Price'].append(f"{order['price']:.4f} USDT")
+            data['Amount'].append(f"{order['amount']:.8f}")
+            data['Order Time'].append(order['order_time'].strftime('%Y-%m-%d %H:%M:%S'))
+            data['Status'].append('Pending')
+        
+        return pd.DataFrame(data)
+
+    def display(self, current_status: Dict[str, Any]) -> None:
+        if not current_status:
+            logger.warning("No current status available.")
+            st.warning("No current status available.")
+            return
+        logger.info("Displaying status table.")
+        
+        # Show pending orders if any
+        if current_status.get('pending_orders', {}):
+            st.subheader("Pending Orders")
+            pending_orders_df = self._create_pending_orders_dataframe(current_status)
+            st.dataframe(pending_orders_df, use_container_width=True)
+        
+        # Overall status
+        status_df = self._create_status_dataframe(current_status)
+        st.dataframe(status_df, use_container_width=True)
+
 class TradeMessages(UIComponent):
     def display(self) -> None:
         logger.info("Displaying trade messages.")
