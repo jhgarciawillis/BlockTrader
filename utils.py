@@ -202,3 +202,45 @@ class SimulatedTradeClient:
     
 def create_simulated_trade_client(fees: dict, max_total_orders: int, currency_allocations: dict) -> SimulatedTradeClient:
     return SimulatedTradeClient(fees, max_total_orders, currency_allocations)
+
+def handle_trading_errors(func: Callable) -> Callable:
+    def wrapper(*args, **kwargs) -> Any:
+        max_retries = 3
+        retry_delay = 2  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error in {func.__name__}: {str(e)}")
+                
+                # Check if we should retry based on error type
+                if "Too Many Requests" in str(e):
+                    # Rate limit hit, wait longer
+                    retry_wait = retry_delay * (attempt + 1) * 2
+                    logger.info(f"Rate limit hit, retrying in {retry_wait} seconds...")
+                    time.sleep(retry_wait)
+                    continue
+                    
+                elif "Connection" in str(e) and attempt < max_retries - 1:
+                    # Network issue, retry
+                    retry_wait = retry_delay * (attempt + 1)
+                    logger.info(f"Connection issue, retrying in {retry_wait} seconds...")
+                    time.sleep(retry_wait)
+                    continue
+                    
+                else:
+                    # Other errors or final attempt failed
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        # Allow non-critical operations to fail gracefully
+                        if 'check_' in func.__name__ or 'update_' in func.__name__:
+                            logger.warning(f"Operation {func.__name__} failed after {max_retries} attempts")
+                            return None
+                        else:
+                            # Re-raise for critical operations
+                            raise
+                
+    return wrapper

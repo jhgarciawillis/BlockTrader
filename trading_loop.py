@@ -17,12 +17,24 @@ class TradingLoop:
         self.profit_margin = profit_margin if profit_margin is not None else config_manager.get_config('profit_margin')
         self.taker_fee = taker_fee
         self.maker_fee = maker_fee
+        self.order_check_interval = 10  # seconds to check order status
 
     @handle_trading_errors
     def run(self, stop_event: threading.Event) -> None:
+        last_order_check_time = 0
+        
         while not stop_event.is_set():
             try:
+                current_time = time.time()
+                
+                # Check pending orders frequently
+                if current_time - last_order_check_time >= self.order_check_interval:
+                    self.bot.check_pending_orders()
+                    last_order_check_time = current_time
+                
+                # Regular trading iteration
                 self.trading_iteration()
+                
                 time.sleep(config_manager.get_config('bot_config')['update_interval'])
             except Exception as e:
                 logger.error(f"An error occurred in the trading loop: {str(e)}")
@@ -33,6 +45,10 @@ class TradingLoop:
         try:
             current_prices = config_manager.fetch_real_time_prices(self.chosen_symbols)
             
+            # First check if there are any pending orders that need attention
+            self.bot.check_pending_orders()
+            
+            # Process each symbol
             for symbol in self.chosen_symbols:
                 if current_prices.get(symbol) is not None:
                     self.process_symbol(symbol, current_prices[symbol])
@@ -68,34 +84,39 @@ class TradingLoop:
                     
                     if max_order_amount > 0:
                         order = self.bot.place_buy_order(symbol, max_order_amount, should_buy)
-                        if order:
-                            logger.info(
-                                f"Buy order placed for {symbol}: {order['dealSize']} at {should_buy} USDT "
-                                f"(Fee: {order['fee']} USDT)"
-                            )
+                        if order and 'orderId' in order:
+                            if 'trade_messages' in st.session_state:
+                                st.session_state.trade_messages.append(
+                                    f"Buy order placed for {symbol} at {should_buy} USDT"
+                                )
         except Exception as e:
             logger.error(f"Error checking buy condition for {symbol}: {e}")
 
     @handle_trading_errors
     def check_sell_condition(self, symbol: str, current_price: float) -> None:
         try:
-            active_trades = [trade for trade in self.bot.active_trades.values() if trade['symbol'] == symbol]
-            
-            for trade in active_trades:
-                target_sell_price = self.bot.calculate_target_sell_price(trade['buy_price'])
-                
-                if current_price >= target_sell_price:
-                    sell_amount = trade['amount']
-                    sell_order = self.bot.place_sell_order(symbol, sell_amount, current_price)
+            # Check active trades for sell opportunities
+            for order_id, trade in list(self.bot.active_trades.items()):
+                if trade['symbol'] == symbol:
+                    target_sell_price = trade['target_sell_price']
                     
-                    if sell_order:
-                        profit = self.bot.calculate_profit(trade, sell_order)
-                        self.bot.update_profit(symbol, profit)
-                        logger.info(
-                            f"Sell order executed for {symbol}: {sell_order['dealSize']} at {current_price} USDT "
-                            f"(Fee: {sell_order['fee']} USDT, Profit: {profit} USDT)"
+                    # Only sell if we can get our target price or better
+                    if current_price >= target_sell_price:
+                        sell_amount = trade['amount']
+                        
+                        # Place sell order at current price (which is >= target price)
+                        sell_order = self.bot.place_sell_order(
+                            symbol, 
+                            sell_amount, 
+                            current_price,
+                            order_id
                         )
-                        del self.bot.active_trades[trade['orderId']]
+                        
+                        if sell_order and 'orderId' in sell_order:
+                            if 'trade_messages' in st.session_state:
+                                st.session_state.trade_messages.append(
+                                    f"Sell order placed for {symbol} at {current_price} USDT (Target: {target_sell_price} USDT)"
+                                )
         
         except Exception as e:
             logger.error(f"Error checking sell condition for {symbol}: {e}")

@@ -19,6 +19,7 @@ class TradingBot:
         self.symbol_allocations: Dict[str, float] = {}
         self.price_history: Dict[str, deque] = {}
         self.active_trades: Dict[str, Dict] = {}
+        self.pending_orders: Dict[str, Dict] = {}  # Track orders not yet filled
         self.total_trades: int = 0
         self.status_history: List[Dict] = []
         self.is_simulation: bool = False
@@ -98,9 +99,11 @@ class TradingBot:
 
     def can_place_order(self, symbol: str) -> bool:
         total_orders = sum(len(orders) for orders in self.active_orders.values())
-        return total_orders < self.max_total_orders
+        total_pending = len(self.pending_orders)
+        return (total_orders + total_pending) < self.max_total_orders
 
     def calculate_target_sell_price(self, buy_price: float) -> float:
+        # Calculate sell price to ensure profit margin after fees
         actual_cost = buy_price * (1 + self.taker_fee)
         target_revenue = actual_cost * (1 + self.profit_margin)
         target_sell_price = target_revenue / (1 - self.taker_fee)
@@ -112,24 +115,42 @@ class TradingBot:
             return None
         
         try:
-            # Adjust the buy amount considering the taker fee
-            buy_amount_with_fee = amount_usdt / (1 + self.taker_fee)
+            # Calculate amount of crypto to buy at the limit price
+            crypto_amount = amount_usdt / limit_price
             
             order = self.trade_client.create_limit_order(
                 symbol=symbol,
                 side=Trade.SIDE_BUY,
                 price=str(limit_price),
-                size=str(buy_amount_with_fee / limit_price),
+                size=str(crypto_amount),
             )
-            if order:
-                self._process_order_response(order, 'buy', symbol, buy_amount_with_fee / limit_price, limit_price)
+            
+            if order and 'orderId' in order:
+                # Add to pending orders for tracking
+                self.pending_orders[order['orderId']] = {
+                    'symbol': symbol,
+                    'side': Trade.SIDE_BUY,
+                    'price': limit_price,
+                    'amount': crypto_amount,
+                    'amount_usdt': amount_usdt,
+                    'order_time': datetime.now(),
+                    'target_sell_price': self.calculate_target_sell_price(limit_price)
+                }
+                
+                logger.info(f"Placed buy order for {symbol}: {crypto_amount} at {limit_price} USDT")
+                
+                if symbol not in self.active_orders:
+                    self.active_orders[symbol] = []
+                self.active_orders[symbol].append(order)
+                
             return order
+            
         except Exception as e:
             logger.error(f"Error placing buy order: {e}")
             return None
 
     @handle_trading_errors
-    def place_sell_order(self, symbol: str, amount_crypto: float, target_sell_price: float) -> Optional[Dict]:
+    def place_sell_order(self, symbol: str, amount_crypto: float, target_sell_price: float, buy_order_id: str) -> Optional[Dict]:
         if not self.can_place_order(symbol):
             return None
         
@@ -140,33 +161,112 @@ class TradingBot:
                 price=str(target_sell_price),
                 size=str(amount_crypto),
             )
-            if order:
-                self._process_order_response(order, 'sell', symbol, amount_crypto, target_sell_price)
+            
+            if order and 'orderId' in order:
+                # Add to pending orders for tracking
+                self.pending_orders[order['orderId']] = {
+                    'symbol': symbol,
+                    'side': Trade.SIDE_SELL,
+                    'price': target_sell_price,
+                    'amount': amount_crypto,
+                    'order_time': datetime.now(),
+                    'buy_order_id': buy_order_id
+                }
+                
+                logger.info(f"Placed sell order for {symbol}: {amount_crypto} at {target_sell_price} USDT")
+                
+                if symbol not in self.active_orders:
+                    self.active_orders[symbol] = []
+                self.active_orders[symbol].append(order)
+                
             return order
+            
         except Exception as e:
             logger.error(f"Error placing sell order: {e}")
             return None
 
-    def _process_order_response(self, order: Dict, side: str, symbol: str, amount: float, price: float) -> None:
-        if side == Trade.SIDE_BUY:
-            self.active_trades[order['orderId']] = {
-                'symbol': symbol,
-                'buy_price': float(price),
-                'amount': float(amount),
-                'fee': float(order.get('fee', 0)),
-                'buy_time': datetime.now()
-            }
-        self.wallet.update_account_balance('trading', symbol, float(amount), float(price), float(order.get('fee', 0)), side)
-        if symbol not in self.active_orders:
-            self.active_orders[symbol] = []
-        self.active_orders[symbol].append(order)
+    @handle_trading_errors
+    def check_pending_orders(self) -> None:
+        """Check status of pending orders and update accordingly"""
+        for order_id, order_data in list(self.pending_orders.items()):
+            try:
+                order_info = self.trade_client.get_order(order_id)
+                
+                # If order is filled
+                if order_info.get('status') == 'done':
+                    symbol = order_data['symbol']
+                    side = order_data['side']
+                    
+                    if side == Trade.SIDE_BUY:
+                        # Move to active trades
+                        self.active_trades[order_id] = {
+                            'symbol': symbol,
+                            'buy_price': float(order_data['price']),
+                            'amount': float(order_data['amount']),
+                            'buy_time': order_data['order_time'],
+                            'target_sell_price': order_data['target_sell_price']
+                        }
+                        
+                        # Update wallet
+                        self.wallet.update_account_balance(
+                            'trading', 
+                            symbol, 
+                            float(order_data['amount']), 
+                            float(order_data['price']), 
+                            float(order_info.get('fee', 0)), 
+                            side
+                        )
+                        
+                        logger.info(f"Buy order {order_id} for {symbol} filled at {order_data['price']}")
+                        
+                    elif side == Trade.SIDE_SELL:
+                        # Get the corresponding buy order
+                        buy_order_id = order_data['buy_order_id']
+                        buy_data = self.active_trades.get(buy_order_id)
+                        
+                        if buy_data:
+                            # Calculate profit
+                            profit = self.calculate_profit(buy_data, order_info)
+                            self.update_profit(symbol, profit)
+                            
+                            # Update wallet
+                            self.wallet.update_account_balance(
+                                'trading', 
+                                symbol, 
+                                float(order_data['amount']), 
+                                float(order_data['price']), 
+                                float(order_info.get('fee', 0)), 
+                                side
+                            )
+                            
+                            logger.info(f"Sell order {order_id} for {symbol} filled at {order_data['price']} (Profit: {profit} USDT)")
+                            
+                            # Remove the buy order from active trades
+                            del self.active_trades[buy_order_id]
+                    
+                    # Remove from pending orders
+                    del self.pending_orders[order_id]
+                    
+                # Handle cancelled orders
+                elif order_info.get('status') == 'cancelled':
+                    logger.info(f"Order {order_id} for {order_data['symbol']} was cancelled")
+                    del self.pending_orders[order_id]
+                
+            except Exception as e:
+                logger.error(f"Error checking order {order_id}: {e}")
 
-    def calculate_profit(self, buy_order: Dict, sell_order: Dict) -> float:
-        buy_amount_usdt = float(buy_order['dealFunds'])
-        sell_amount_usdt = float(sell_order['dealFunds'])
-        sell_fee_usdt = float(sell_order['fee'])
+    def calculate_profit(self, buy_data: Dict, sell_order: Dict) -> float:
+        buy_price = buy_data['buy_price']
+        buy_amount = buy_data['amount']
+        sell_price = float(sell_order.get('price', 0))
+        sell_amount = float(sell_order.get('dealSize', 0))
+        sell_fee = float(sell_order.get('fee', 0))
         
-        profit = (sell_amount_usdt - sell_fee_usdt) - buy_amount_usdt
+        # Calculate actual profit
+        buy_cost = buy_price * buy_amount * (1 + self.taker_fee)
+        sell_revenue = sell_price * sell_amount * (1 - self.taker_fee)
+        
+        profit = sell_revenue - buy_cost
         return profit
 
     def update_profit(self, symbol: str, profit: float) -> None:
@@ -180,6 +280,9 @@ class TradingBot:
         self.wallet.set_currency_allocations(self.currency_allocations)
 
     def get_current_status(self, prices: Dict[str, float]) -> Dict:
+        # First check pending orders to update status
+        self.check_pending_orders()
+        
         current_total_usdt = self.wallet.get_balance('trading', 'USDT', 'liquid') + self.wallet.get_balance('trading', 'USDT', 'trading')
         tradable_usdt = self.get_balance('USDT', 'trading')
         liquid_usdt = self.wallet.get_balance('trading', 'USDT', 'liquid')
@@ -188,6 +291,7 @@ class TradingBot:
             'timestamp': datetime.now(),
             'prices': prices,
             'active_trades': self.active_trades.copy(),
+            'pending_orders': self.pending_orders.copy(),
             'profits': self.wallet.get_profits(),
             'total_profit': sum(self.wallet.get_profits().values()),
             'current_total_usdt': current_total_usdt,
