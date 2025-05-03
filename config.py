@@ -1,7 +1,8 @@
+# config.py
 import logging
 from typing import Dict, Any
 import streamlit as st
-from utils import KucoinClientManager
+from utils import KucoinClientManager, SimulatedAPIClient
 from simulated_trade_client import SimulatedTradeClient
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -76,36 +77,23 @@ class ConfigManager:
 
     def get_available_trading_symbols(self) -> list:
         """Return a list of available trading symbols"""
-        logger.info("Using default trading symbols for selection")
-        return DEFAULT_CONFIG['trading_symbols']
+        try:
+            # Use our simulated client
+            client = kucoin_client_manager.get_client()
+            symbols_data = client.get_symbols()
+            return [symbol['symbol'] for symbol in symbols_data]
+        except Exception as e:
+            logger.error(f"Error fetching symbols: {e}")
+            return DEFAULT_CONFIG['trading_symbols']
 
     def fetch_real_time_prices(self, symbols: list) -> dict:
         prices = {}
         try:
-            # For simulation, generate synthetic prices
-            import random
-            import time
-            
-            # Use time-based seeds for somewhat realistic price movements
-            seed = int(time.time() * 10) % 1000
-            random.seed(seed)
-            
-            base_prices = {
-                'BTC-USDT': 60000.0,
-                'ETH-USDT': 3500.0,
-                'XRP-USDT': 0.5,
-                'ADA-USDT': 0.4,
-                'DOT-USDT': 20.0,
-            }
-            
+            client = kucoin_client_manager.get_client()
             for symbol in symbols:
-                base = base_prices.get(symbol, 100.0)
-                # Small random fluctuation
-                variation = random.uniform(-0.005, 0.005)
-                prices[symbol] = base * (1 + variation)
-                
-            logger.debug(f"Generated simulated prices: {prices}")
-            
+                ticker = client.get_ticker(symbol)
+                prices[symbol] = float(ticker['price'])
+            logger.debug(f"Fetched prices: {prices}")
         except Exception as e:
             logger.error(f"Error fetching prices: {e}")
             # Fallback to static prices
@@ -134,8 +122,13 @@ class ConfigManager:
 
     def initialize_kucoin_client(self) -> None:
         try:
-            # Just log initialization since we're using simulation
-            logger.info("Using simulated KuCoin client.")
+            # Initialize our simulated client
+            kucoin_client_manager.initialize(
+                key="simulation",
+                secret="simulation",
+                passphrase="simulation"
+            )
+            logger.info("Simulated KuCoin client initialized successfully.")
         except Exception as e:
             logger.error(f"Error initializing KuCoin client: {e}")
 

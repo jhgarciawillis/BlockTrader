@@ -1,7 +1,9 @@
+# utils.py
 import logging
 from typing import Any, Callable
 import time
 import uuid
+from simulated_trade_client import SIDE_BUY, SIDE_SELL
 
 logger = logging.getLogger(__name__)
 
@@ -65,29 +67,43 @@ class KucoinClientManager:
         return cls._instance
 
     def initialize(self, key: str, secret: str, passphrase: str) -> None:
-        # For simulation, we'll create a dummy client
-        logger.info("Initializing simulated KuCoin client")
-        self.client = DummyClient()
+        try:
+            logger.info("Initializing simulated KuCoin client")
+            self.client = SimulatedAPIClient()
+            logger.info("Simulated KuCoin client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize KuCoin client: {e}")
+            self.client = SimulatedAPIClient()
 
     def get_client(self):
         if self.client is None:
-            logger.warning("KuCoin client not initialized. Creating dummy client.")
-            self.client = DummyClient()
+            logger.warning("KuCoin client not initialized. Creating simulated client.")
+            self.client = SimulatedAPIClient()
         return self.client
 
-class DummyClient:
-    """Dummy client for simulation that implements the required methods"""
+class SimulatedAPIClient:
+    """Completely simulated API client with the necessary methods"""
     
     def __init__(self):
         self.SIDE_BUY = 'buy'
         self.SIDE_SELL = 'sell'
         self.ORDER_LIMIT = 'limit'
         self.TIMEINFORCE_GOOD_TILL_CANCELLED = 'GTC'
+        self.orders = {}
+        self.symbols = ['BTC-USDT', 'ETH-USDT', 'XRP-USDT', 'ADA-USDT', 'DOT-USDT']
     
     def get_timestamp(self):
         return int(time.time() * 1000)
     
+    def get_symbols(self):
+        """Return simulated symbols list"""
+        return [
+            {'symbol': symbol, 'quoteCurrency': 'USDT', 'enableTrading': True}
+            for symbol in self.symbols
+        ]
+    
     def get_ticker(self, symbol):
+        """Get simulated price for a symbol"""
         import random
         base_prices = {
             'BTC-USDT': 60000.0,
@@ -102,16 +118,34 @@ class DummyClient:
         return {'price': str(price)}
     
     def create_limit_order(self, symbol, side, price, size, **kwargs):
+        """Create a simulated order"""
         order_id = str(uuid.uuid4())
+        timestamp = int(time.time() * 1000)
+        self.orders[order_id] = {
+            'orderId': order_id,
+            'symbol': symbol,
+            'side': side,
+            'price': price,
+            'size': size,
+            'status': 'active',
+            'createdAt': timestamp
+        }
         return {'orderId': order_id}
     
     def get_order(self, order_id):
-        # After a delay, return the order as filled
-        if hasattr(self, f'order_{order_id}_time') and time.time() - getattr(self, f'order_{order_id}_time') > 5:
-            return {'orderId': order_id, 'status': 'done'}
-        
-        setattr(self, f'order_{order_id}_time', time.time())
-        return {'orderId': order_id, 'status': 'active'}
+        """Get order details, simulate filling after delay"""
+        if order_id not in self.orders:
+            return {}
+            
+        order = self.orders[order_id]
+        # Auto-fill after 5 seconds
+        if order['status'] == 'active' and time.time() * 1000 - order['createdAt'] > 5000:
+            order['status'] = 'done'
+            order['dealSize'] = order['size']
+            order['dealFunds'] = str(float(order['size']) * float(order['price']))
+            order['fee'] = str(float(order['dealFunds']) * 0.001)  # 0.1% fee
+            
+        return order
 
 def create_simulated_trade_client(fees: dict, max_total_orders: int, currency_allocations: dict):
     from simulated_trade_client import SimulatedTradeClient
