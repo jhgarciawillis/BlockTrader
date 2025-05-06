@@ -70,10 +70,10 @@ class SidebarControls(UIComponent):
 
         profit_margin_percentage = st.sidebar.number_input(
             "Profit Margin Percentage",
-            min_value=0.0001,
-            value=config_manager.get_config('profit_margin', 0.0001) * 100,
-            step=0.0001,
-            format="%.4f",
+            min_value=0.000001,
+            value=config_manager.get_config('profit_margin', 0.000001) * 100,
+            step=0.000001,
+            format="%.6f",
             key='profit_margin_percentage'
         ) / 100
 

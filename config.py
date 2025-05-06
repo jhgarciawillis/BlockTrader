@@ -43,6 +43,8 @@ class ConfigManager:
         self.config = None
         logger.info("Loading configuration")
         self.config = self.load_config()
+        # Pre-cache trading symbols to avoid UI issues
+        self._available_trading_symbols = None
 
     def load_config(self) -> Dict[str, Any]:
         logger.info("Loading default configuration")
@@ -77,13 +79,27 @@ class ConfigManager:
 
     def get_available_trading_symbols(self) -> list:
         """Return a list of available trading symbols"""
+        # Return cached symbols if available
+        if self._available_trading_symbols is not None:
+            return self._available_trading_symbols
+            
         try:
+            # Initialize client if needed
+            if not kucoin_client_manager.client:
+                self.initialize_kucoin_client()
+                
             # Use our simulated client
             client = kucoin_client_manager.get_client()
             symbols_data = client.get_symbols()
-            return [symbol['symbol'] for symbol in symbols_data]
+            symbols = [symbol['symbol'] for symbol in symbols_data]
+            
+            # Cache the symbols for future use
+            self._available_trading_symbols = symbols
+            return symbols
         except Exception as e:
             logger.error(f"Error fetching symbols: {e}")
+            # Cache default symbols on error
+            self._available_trading_symbols = DEFAULT_CONFIG['trading_symbols']
             return DEFAULT_CONFIG['trading_symbols']
 
     def fetch_real_time_prices(self, symbols: list) -> dict:
